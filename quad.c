@@ -24,17 +24,19 @@
 
 #define Q_CHANGEMUX 0x80
 #define Q_CHANNELA 0x40
-#define THRESHOLD 0x20
+#define THRESHOLD 100
 
-#define FWD() PORTB = (1 << 4)
-#define REV() PORTB = (1 << 5)
+volatile uint8_t direction = 0;
+
+#define FWD() direction = 0
+#define REV() direction = 1
 
 ISR(ADC_vect)
 {
 	static uint8_t count = 0;
 	static uint8_t a = 0, b = 0, q = 0;
 
-	/* Alternate between ch0 and ch1 */
+	/* Alternate between ch2 and ch3 */
 	if (count & 1) {
 		ADMUX ^= (1 << MUX0);
 	} else {
@@ -66,42 +68,44 @@ ISR(ADC_vect)
 void init_adc(void)
 {
 	/* Use channel 0, left adjust result */
-	ADMUX = (1 << ADLAR) | (0 << MUX0);
+	ADMUX = (1 << ADLAR) | (2 << MUX0);
 	/* Free-running mode, CK / 64 = 125 kHz
 	 * @13 cycles per sample, about 10 kHz sample rate. 100 us/sample  */
-	ADCSR = (1 << ADEN) | (1 << ADSC) | (1 << ADFR) | (1 << ADIE) |
+	ADCSRA = (1 << ADEN) | (1 << ADSC) | (1 << ADATE) | (1 << ADIE) |
 		(6 << ADPS0);
+
 }
 
 /* This will clobber *all* ADC state and do a single 8-bit read */
 uint8_t analog_read(uint8_t channel)
 {
 	/* Set some clock. Don't care what */
-	ADCSR = (6 << ADPS0);
+	ADCSRA = (6 << ADPS0);
 	/* Select the channel we want. VCC ref, right-adjust */
 	ADMUX = (channel << MUX0) | (1 << ADLAR);
-	ADCSR |= (1 << ADEN) | (1 << ADSC);
+	ADCSRA |= (1 << ADEN) | (1 << ADSC);
 
-	while(ADCSR & (1 << ADSC));
+	while(ADCSRA & (1 << ADSC));
 
 	return ADCH;
 }
 
 int main(void)
 {
-	uint8_t a_thresh, b_thresh;
-	uint8_t reading;
-	uint8_t a, b, q;
-
-	DDRA = ~0x03;
-	PORTA = 0;
-	DDRB = (3 << 4);
-	PORTB = 0x00;
+	DDRB = 0x02;
+	PORTB = 0x02;
 
 	init_adc();
 	sei();
 
-	while(1);
+	while(1) {
+		if (direction)
+			_delay_ms(250);
+		_delay_ms(250);
+		PORTB = 0;
+		_delay_ms(250);
+		PORTB = 2;
+	}
 
 	return 0;
 }

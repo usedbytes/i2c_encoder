@@ -13,11 +13,11 @@
 
 # Microcontroller Type
 # MCU = attiny13
-MCU = attiny26
+MCU = attiny45
 # MCU = atmega8
 
 # Target file name (without extension).
-TARGET = quad_26l
+TARGET = quad
 
 # List C sourcVe files here. (C dependencies are automatically generated.)
 SRC = $(TARGET).c
