@@ -7,7 +7,7 @@
 |   0x01  | ----       | Reserved       | RO     |    0  |
 |   0x02  | **STATUS** | Status/Control | R/W    |    0  |
 |   0x03  | **CMP**    | Compare Match  | R/W    |    0  |
-|   0x04  | ----       | Reserved       | R/W    |    0  |
+|   0x04  | ----       | Reserved       | RO     |    0  |
 |   0x05  | **MIN**    | Min level      | RO     |    0  |
 |   0x06  | **MAX**    | Max level      | RO     | 0xFF  |
 |   0x07  | **THRESH** | Threshold      | R/W    | 0x80  |
@@ -29,7 +29,7 @@ written at any time.
 | RSVD | RSVD | LED1 | LED0 | CMIF | CMIE | CAL  | RST  |
 |:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
 |    7 |    6 |    5 |    4 |    3 |    2 |    1 |    0 |
-|    r |    r |   rw |   rw |   rw |   rw |   rw |    w |
+|    r |    r |   rw |   rw |   rw |   rw |   rw |   rw |
 
 ### *RST*
 Writing a 1 to this bit will reset the counter, and set the **CNT** register to
@@ -55,9 +55,8 @@ the LED/IRQ pin will go HIGH when the counter value matches the value set in
 
 ### *CMIF*
 The compare-match interrupt flag. This bit will be asserted when a
-compare-match occurs. The host must write 1 to this bit to clear the flag and
-release the LED/IRQ line. Writing 1 to this bit at any other time has no
-effect.
+compare-match occurs. The host must write 0 to this bit to clear the flag and
+release the LED/IRQ line. Writing 1 to this bit has no effect.
 
 ### *LED[1:0]*
 These two bits control the behaviour of the LED/IRQ output, as described in the

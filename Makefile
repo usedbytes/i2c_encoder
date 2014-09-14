@@ -20,7 +20,7 @@ MCU = attiny45
 TARGET = quad
 
 # List C sourcVe files here. (C dependencies are automatically generated.)
-SRC = $(TARGET).c
+SRC = $(TARGET).c i2c_machine.c i2c_slave_defs.c
 
 # Programming hardware: type avrdude -c ?
 # to get a full listing.
