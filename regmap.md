@@ -1,5 +1,5 @@
 
-# Regiser Map
+# Register Map
 
 | Address | Name       | Description    | Access | Reset |
 |--------:|------------|:---------------|--------|------:|
@@ -56,7 +56,8 @@ the LED/IRQ pin will go HIGH when the counter value matches the value set in
 ### *CMIF*
 The compare-match interrupt flag. This bit will be asserted when a
 compare-match occurs. The host must write 0 to this bit to clear the flag and
-release the LED/IRQ line. Writing 1 to this bit has no effect.
+release the LED/IRQ line. Writing 1 to this bit forces a compare match event,
+which will assert the LED/IRQ line depending on the *LED[1:0]* setting.
 
 ### *LED[1:0]*
 These two bits control the behaviour of the LED/IRQ output, as described in the
