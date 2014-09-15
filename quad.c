@@ -33,8 +33,6 @@
 
 #define THRESHOLD 100
 
-volatile uint8_t direction = 0;
-
 #define FWD() REG_CNT++
 #define REV() REG_CNT--
 
@@ -65,6 +63,8 @@ uint8_t analog_read(uint8_t channel)
 
 int main(void)
 {
+	uint8_t irq_fired;
+
 	DDRB = 0x02;
 	PORTB = 0x00;
 
@@ -74,6 +74,12 @@ int main(void)
 
 	while (1) {
 		i2c_check_stop();
+
+		/* Reset if necessary */
+		if (REG_STATUS & STATUS_RST) {
+			REG_CNT = 0;
+			REG_STATUS &= ~STATUS_RST;
+		}
 
 		/* Sample ADC */
 		if (ADCSRA & (1 << ADIF)) {
@@ -107,8 +113,36 @@ int main(void)
 				q = newq;
 			}
 			count++;
-			LED_OFF();
 			ADCSRA |= (1 << ADIF) | (1 << ADSC);
+		}
+
+		/* Check/set interrupt */
+		if (REG_STATUS & STATUS_CMIE) {
+			/* Detect a match and set the flag */
+			if ((REG_CNT == REG_CMP) && !irq_fired) {
+				REG_STATUS |= STATUS_CMIF;
+				irq_fired = 1;
+			}
+
+		}
+		/* Detect the flag being cleared and re-arm */
+		if (!(REG_STATUS & STATUS_CMIF) && irq_fired) {
+			irq_fired = 0;
+		}
+
+		/* Check/Set LED/IRQ */
+		switch (REG_STATUS & LED_STATE_MASK) {
+		case LED_STATE_BIT0:
+			if (REG_CNT & 1)
+				LED_ON();
+			else
+				LED_OFF();
+			break;
+		case LED_STATE_IRQ:
+			if (REG_STATUS & STATUS_CMIF)
+				LED_ON();
+			else
+				LED_OFF();
 		}
 	};
 

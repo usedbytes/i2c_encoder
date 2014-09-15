@@ -31,9 +31,20 @@
 /* Define anything else your application wants to know */
 #define REG_CNT    i2c_reg[0]
 #define REG_STATUS i2c_reg[2]
+#define     STATUS_RST  (1 << 0)
+#define     STATUS_CAL  (1 << 1)
+#define     STATUS_CMIE (1 << 2)
+#define     STATUS_CMIF (1 << 3)
+#define     STATUS_LED0 (1 << 4)
+#define     STATUS_LED1 (1 << 5)
 #define REG_CMP    i2c_reg[3]
 #define REG_MIN    i2c_reg[5]
 #define REG_MAX    i2c_reg[6]
 #define REG_THRESH i2c_reg[7]
+
+#define LED_STATE_MASK (STATUS_LED0 | STATUS_LED1)
+#define LED_STATE_OFF  (0 << 4)
+#define LED_STATE_BIT0 (1 << 4)
+#define LED_STATE_IRQ  (2 << 4)
 
 #endif /* __I2C_SLAVE_DEFS__ */
