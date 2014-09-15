@@ -31,48 +31,12 @@
 #define LED_OFF() PORTB &= ~0x2
 #define LED_FLICKER() LED_OFF(); LED_ON()
 
-#define Q_CHANGEMUX 0x80
-#define Q_CHANNELA 0x40
 #define THRESHOLD 100
 
 volatile uint8_t direction = 0;
 
-#define FWD() i2c_reg[0]++
-#define REV() i2c_reg[0]--
-
-ISR(ADC_vect)
-{
-	static uint8_t count = 0;
-	static uint8_t a = 0, b = 0, q = 0;
-
-	/* Alternate between ch2 and ch3 */
-	if (count & 1) {
-		ADMUX ^= (1 << MUX0);
-	} else {
-		uint8_t high = ADCH > THRESHOLD;
-		uint8_t newq;
-		if (count & 2) {
-			if (high) {
-				a = 1;
-			} else {
-				a = 0;
-			}
-		} else {
-			if (high) {
-				b = 1;
-			} else {
-				b = 0;
-			}
-		}
-		newq = (b << 1) | (a ^ b);
-		if ((newq == 3) && (q == 0))
-			FWD();
-		else if ((newq == 0) && (q == 3))
-			REV();
-		q = newq;
-	}
-	count++;
-}
+#define FWD() REG_CNT++
+#define REV() REG_CNT--
 
 void adc_init(void)
 {
@@ -80,7 +44,7 @@ void adc_init(void)
 	ADMUX = (1 << ADLAR) | (2 << MUX0);
 	/* Free-running mode, CK / 64 = 125 kHz
 	 * @13 cycles per sample, about 10 kHz sample rate. 100 us/sample  */
-	ADCSRA = (1 << ADEN) | (1 << ADSC) | (1 << ADATE) | (1 << ADIE) |
+	ADCSRA = (1 << ADEN) | (1 << ADSC) | (0 << ADATE) | (0 << ADIE) |
 		(6 << ADPS0);
 
 }
@@ -110,6 +74,42 @@ int main(void)
 
 	while (1) {
 		i2c_check_stop();
+
+		/* Sample ADC */
+		if (ADCSRA & (1 << ADIF)) {
+			static uint8_t count = 0;
+			static uint8_t a = 0, b = 0, q = 0;
+			/* Alternate between ch2 and ch3 */
+			if (count & 1) {
+				ADMUX ^= (1 << MUX0);
+			}
+			else {
+				uint8_t high = ADCH > THRESHOLD;
+				uint8_t newq;
+				if (count & 2) {
+					if (high) {
+						a = 1;
+					} else {
+						a = 0;
+					}
+				} else {
+					if (high) {
+						b = 1;
+					} else {
+						b = 0;
+					}
+				}
+				newq = (b << 1) | (a ^ b);
+				if ((newq == 3) && (q == 0))
+					FWD();
+				else if ((newq == 0) && (q == 3))
+					REV();
+				q = newq;
+			}
+			count++;
+			LED_OFF();
+			ADCSRA |= (1 << ADIF) | (1 << ADSC);
+		}
 	};
 
 	return 0;

@@ -122,7 +122,7 @@ volatile uint8_t i2c_offset = 0;
 ISR(USI_START_vect)
 {
 	i2c_state = 0;
-	LED_ON();
+	while (PINB & (1 << I2C_SCL));
 	USISR = 0xF0;
 }
 
@@ -130,7 +130,7 @@ ISR(USI_OVF_vect)
 {
 	static uint8_t post_ack = 0;
 	/* Writing USISR directly has side effects! */
-	uint8_t usisr_tmp = 0x70;
+	uint8_t usisr_tmp = 0xD0;
 	uint8_t sda_direction;
 	uint8_t tmp;
 
@@ -179,8 +179,8 @@ ISR(USI_OVF_vect)
 				/* Only heed writeable bits */
 				i2c_reg[i2c_offset] &= ~tmp;
 				i2c_reg[i2c_offset] |= USIDR & tmp;
-				i2c_update++;
 			}
+			i2c_update++;
 			i2c_offset++;
 			ACK();
 			break;
@@ -237,17 +237,16 @@ uint8_t i2c_check_stop()
 {
 	uint8_t ret = 0;
 
-	if (USISR & (1 << USIPF)) {
-		/* Transition c */
-		if ((i2c_state == I2C_STATE_MASTER_WRITE) && i2c_update)
+	if ((i2c_state == I2C_STATE_MASTER_WRITE) && i2c_update) {
+		cli();
+		uint8_t tmp = USISR;
+		if (tmp & (1 << USIPF)) {
+			i2c_state = 4;
+			ret = i2c_update;
+			i2c_update = 0;
 			i2c_offset = 0;
-		i2c_state = I2C_STATE_ADDR_MATCH;
-		LED_OFF();
-		USISR = 0xF0;
-
-		ret = i2c_update;
-		i2c_update = 0;
+		}
+		sei();
 	}
-
 	return ret;
 }

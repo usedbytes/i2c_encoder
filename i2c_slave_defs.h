@@ -28,4 +28,12 @@
 #define I2C_N_REG 8
 #define I2C_SLAVE_ADDR 0x40
 
+/* Define anything else your application wants to know */
+#define REG_CNT    i2c_reg[0]
+#define REG_STATUS i2c_reg[2]
+#define REG_CMP    i2c_reg[3]
+#define REG_MIN    i2c_reg[5]
+#define REG_MAX    i2c_reg[6]
+#define REG_THRESH i2c_reg[7]
+
 #endif /* __I2C_SLAVE_DEFS__ */
