@@ -1,3 +1,14 @@
+# i2c_encoder
+
+This is an Atmel Attiny-based quadrature encoder, using the ADC to sample the
+output of two sensors. This should make it very flexible, able to use any kind
+of sensor which can give a varying voltage output.
+
+It also contains a general purpose i2c library for the AVR USI. This allows
+easy implementation of an i2c slave - all that is required is defining an array
+to be used as the i2c "registers" and another to be used as the read/write mask
+to control the access to each bit in each register. See i2c_slave_defs.c/.h for
+an example.
 
 # Register Map
 
