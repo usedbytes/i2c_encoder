@@ -31,10 +31,11 @@
 #define LED_OFF() PORTB &= ~0x2
 #define LED_FLICKER() LED_OFF(); LED_ON()
 
-#define THRESHOLD 100
-
 #define FWD() REG_CNT++
 #define REV() REG_CNT--
+
+#define FLAG_IRQ_FIRED   (1 << 0)
+#define FLAG_CAL_STARTED (1 << 1)
 
 void adc_init(void)
 {
@@ -63,16 +64,29 @@ uint8_t analog_read(uint8_t channel)
 
 int main(void)
 {
-	uint8_t irq_fired;
+	uint8_t flags = 0;
+	uint8_t sample_count = 0;
+	uint8_t q = 0;
 
 	DDRB = 0x02;
 	PORTB = 0x00;
+
+#ifdef DEBUG
+	LED_ON();
+	_delay_ms(30);
+	LED_OFF();
+	_delay_ms(30);
+	LED_ON();
+	_delay_ms(30);
+	LED_OFF();
+#endif
 
 	i2c_init();
 	adc_init();
 	sei();
 
 	while (1) {
+		/* Check for end of i2c transaction */
 		i2c_check_stop();
 
 		/* Reset if necessary */
@@ -83,51 +97,90 @@ int main(void)
 
 		/* Sample ADC */
 		if (ADCSRA & (1 << ADIF)) {
-			static uint8_t count = 0;
-			static uint8_t a = 0, b = 0, q = 0;
-			/* Alternate between ch2 and ch3 */
-			if (count & 1) {
-				ADMUX ^= (1 << MUX0);
-			}
-			else {
-				uint8_t high = ADCH > THRESHOLD;
-				uint8_t newq;
-				if (count & 2) {
-					if (high) {
-						a = 1;
-					} else {
-						a = 0;
-					}
-				} else {
-					if (high) {
-						b = 1;
-					} else {
-						b = 0;
-					}
-				}
-				newq = (b << 1) | (a ^ b);
-				if ((newq == 3) && (q == 0))
-					FWD();
-				else if ((newq == 0) && (q == 3))
-					REV();
-				q = newq;
-			}
-			count++;
+			uint8_t sample = ADCH;
+			/* Swap channel */
+			ADMUX ^= (1 << MUX0);
+			/* Start a new sample */
 			ADCSRA |= (1 << ADIF) | (1 << ADSC);
+
+			if (REG_STATUS & STATUS_CAL) {
+				if (!(flags & FLAG_CAL_STARTED)) {
+					/* Starting new calibration */
+					REG_MAX = 0x0;
+					REG_MIN = 0xFF;
+					flags |= FLAG_CAL_STARTED;
+				}
+				if (sample > REG_MAX) {
+					uint8_t diff = sample - REG_MAX;
+					diff >>= 1;
+					REG_MAX += diff;
+				}
+				if (sample < REG_MIN) {
+					uint8_t diff = REG_MIN - sample;
+					diff >>= 1;
+					REG_MIN -= diff;
+				}
+			} else {
+				if (flags & FLAG_CAL_STARTED) {
+					/* The bit was just cleared */
+					uint8_t threshold = REG_MAX - REG_MIN;
+					threshold >>= 1;
+					REG_THRESH = REG_MIN + threshold;
+					flags &= ~FLAG_CAL_STARTED;
+				} else {
+					/* q contains the current and previous samples in the LS
+					 * 4 bits. Let c[n] = a[n] ^ b[n], then q contains:
+					 * |   3   |   2   |   1   |   0   |
+					 * | b[n-1]| c[n-1]|  b[n] |  c[n] |
+					 *
+					 * If q == 0xC, then the last value was 11 and the new one
+					 * is 00, meaning the counter should be incremented
+					 * If q == 0x3, then the last value was 00 and the new one
+					 * is 11, meaning the counter should be decremented
+					 */
+					if (sample_count & 1) {
+						/* 'a' sample - shift (a ^ b) into q */
+						if (sample > REG_THRESH) {
+							sample = q ^ 1;
+						} else {
+							sample = q;
+						}
+						sample &= 1;
+						q <<= 1;
+						q |= sample;
+
+						/* Now we have 'a' and 'b', check for a transition */
+						q = q & 0xF;
+						if (q == 0xC) {
+							REG_CNT++;
+						} else if (q == 0x3) {
+							REG_CNT--;
+						}
+					} else {
+						/* 'b' sample - just shift it into q */
+						q <<= 1;
+						if (sample > REG_THRESH) {
+							q |= 1;
+						}
+					}
+					sample_count++;
+				}
+			}
+
 		}
 
 		/* Check/set interrupt */
 		if (REG_STATUS & STATUS_CMIE) {
 			/* Detect a match and set the flag */
-			if ((REG_CNT == REG_CMP) && !irq_fired) {
+			if ((REG_CNT == REG_CMP) && !(flags & FLAG_IRQ_FIRED)) {
 				REG_STATUS |= STATUS_CMIF;
-				irq_fired = 1;
+				flags |= FLAG_IRQ_FIRED;
 			}
 
 		}
 		/* Detect the flag being cleared and re-arm */
-		if (!(REG_STATUS & STATUS_CMIF) && irq_fired) {
-			irq_fired = 0;
+		if (!(REG_STATUS & STATUS_CMIF) && (flags & FLAG_IRQ_FIRED)) {
+			flags &= ~FLAG_IRQ_FIRED;
 		}
 
 		/* Check/Set LED/IRQ */
