@@ -1,5 +1,8 @@
 # i2c_encoder
 
+***NOTE***: I *will* be re-writing history in the unstable branch. I'd
+recommend not using it :-)
+
 This is an Atmel Attiny-based quadrature encoder, using the ADC to sample the
 output of two sensors. This should make it very flexible, able to use any kind
 of sensor which can give a varying voltage output.
