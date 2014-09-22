@@ -33,6 +33,7 @@
 #define I2C_STATE_REG_ADDR     1
 #define I2C_STATE_MASTER_READ  2
 #define I2C_STATE_MASTER_WRITE 3
+#define I2C_STATE_IDLE         4
 
 #ifdef DEBUG
 #define LED_ON() PORTB |= 0x2
@@ -51,9 +52,9 @@ volatile uint8_t i2c_offset = 0;
 /* USI i2c Slave State Machine
  * ===========================
  *
- * 4 States:
+ * 5 States:
  *     0 I2C_STATE_ADDR_MATCH
- *       Waiting for address (idle)
+ *       Waiting for address (start)
  *
  *     1 I2C_STATE_REG_ADDR
  *       Receive register address*
@@ -64,16 +65,25 @@ volatile uint8_t i2c_offset = 0;
  *     3 I2C_STATE_MASTER_WRITE
  *       Receive data from master
  *
+ *     4 I2C_STATE_IDLE
+ *       Bus idle/address not matched
+ *
  * Valid state transitions:
- *      __To______
- *      0  1  2  3
- * F 0| h  a  b
- * r 1| ic       d
- * o 2| e     f
- * m 3| c        g
+ *      __To__________
+ *      0  1  2  3  4
+ * F 0|    a  b     h
+ * r 1|          d  ci
+ * o 2|       f     e
+ * m 3|          g  c
+ *   4| j
+ *
+ * Transition j - Start of transaction
+ *  I2C_STATE_IDLE -> I2C_STATE_ADDR_MATCH
+ *  Cond:   Start condition interrupt
+ *  Action: None.
  *
  * Transition h - Address not matched.
- *  I2C_STATE_ADDR_MATCH -> I2C_STATE_ADDR_MATCH
+ *  I2C_STATE_ADDR_MATCH -> I2C_STATE_IDLE
  *  Cond:   Pre-ack. Address doesn't match
  *  Action: NAK.
  *
@@ -88,7 +98,7 @@ volatile uint8_t i2c_offset = 0;
  *  Action: ACK.
  *
  * Transition c - Write finished
- *  I2C_STATE_XXX -> I2C_STATE_ADDR_MATCH
+ *  I2C_STATE_XXX -> I2C_STATE_IDLE
  *  Cond:   Stop flag is set.
  *  Action: None.
  *
@@ -98,12 +108,12 @@ volatile uint8_t i2c_offset = 0;
  *  Action: ACK, reg_ptr = USIDR.
  *
  * Transition i - Invalid reg addr
- *  I2C_STATE_REG_ADDR -> I2C_STATE_ADDR_MATCH
+ *  I2C_STATE_REG_ADDR -> I2C_STATE_IDLE
  *  Cond:   Pre-ack, USIDR > N_REG - 1
  *  Action: NAK.
  *
  * Transition e - Read finished
- *  I2C_STATE_MASTER_READ -> I2C_STATE_ADDR_MATCH
+ *  I2C_STATE_MASTER_READ -> I2C_STATE_IDLE
  *  Cond:   Post-ack. Master NAK'd.
  *  Action: None.
  *
@@ -143,6 +153,7 @@ ISR(USI_OVF_vect)
 			tmp = USIDR >> 1;
 			if (tmp && (tmp != I2C_SLAVE_ADDR)) {
 				/* Transition h */
+				i2c_state = I2C_STATE_IDLE;
 				NAK();
 			} else {
 				if (USIDR & 1) {
@@ -152,6 +163,7 @@ ISR(USI_OVF_vect)
 					/* Transition a */
 					i2c_offset = 0;
 					i2c_state = I2C_STATE_REG_ADDR;
+					i2c_update = 1;
 				}
 				ACK();
 			}
@@ -159,7 +171,7 @@ ISR(USI_OVF_vect)
 		case I2C_STATE_REG_ADDR:
 			if (USIDR > (I2C_N_REG - 1)) {
 				/* Transition i */
-				i2c_state = I2C_STATE_ADDR_MATCH;
+				i2c_state = I2C_STATE_IDLE;
 				NAK();
 			} else {
 				/* Transition d */
@@ -198,7 +210,7 @@ ISR(USI_OVF_vect)
 			if (USIDR) {
 				/* Transition e */
 				i2c_offset = 0;
-				i2c_state = 0;
+				i2c_state = I2C_STATE_IDLE;
 			} else {
 				/* Transition f */
 				sda_direction = I2C_SDA_DIR_OUT;
@@ -241,10 +253,9 @@ uint8_t i2c_check_stop()
 		cli();
 		uint8_t tmp = USISR;
 		if (tmp & (1 << USIPF)) {
-			i2c_state = 4;
+			i2c_state = I2C_STATE_IDLE;
 			ret = i2c_update;
 			i2c_update = 0;
-			i2c_offset = 0;
 		}
 		sei();
 	}

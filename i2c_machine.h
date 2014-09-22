@@ -23,6 +23,7 @@
 
 /* Initialise the USI and I2C state machine */
 void i2c_init(void);
+
 /*
  * Check for and handle a stop condition.
  * Returns non-zero if any registers have been changed
