@@ -13,6 +13,19 @@
 #define ARRAY_SIZE(x) (sizeof(x)/sizeof((x[0])))
 #define DEVICENO 0
 
+enum test_result {
+	RESULT_SKIP = 0,
+	RESULT_PASS,
+	RESULT_FAIL,
+	RESULT_MAX,
+};
+
+char result_str[RESULT_MAX][5] = {
+	"SKIP",
+	"PASS",
+	"FAIL",
+};
+
 extern volatile uint8_t i2c_reg[I2C_N_REG];
 extern const uint8_t i2c_w_mask[I2C_N_REG];
 uint8_t initial_reg[I2C_N_REG];
@@ -31,7 +44,7 @@ void dump_i2c_msg(struct i2c_msg *msg)
 	printf("\n");
 }
 
-int test_read(int fd)
+enum test_result test_read(int fd)
 {
 	int res, i;
 	uint8_t buf[I2C_N_REG] = { 0 };
@@ -42,6 +55,7 @@ int test_read(int fd)
 		.buf = buf
 	};
 	struct i2c_rdwr_ioctl_data arg = { &msg, 1 };
+	enum test_result ret = RESULT_PASS;
 
 	res = ioctl(fd, I2C_RDWR, &arg);
 	if (res != arg.nmsgs) {
@@ -49,22 +63,21 @@ int test_read(int fd)
 			printf("Ioctl error: %i '%s'\n", res, strerror(errno));
 		else
 			printf("Invalid number of messages (%i != %i)\n", res, arg.nmsgs);
-	} else {
-		res = 0;
+		ret = RESULT_FAIL;
 	}
 
 	for (i = 0; i < I2C_N_REG; i++) {
 		if (buf[i] != initial_reg[i]) {
 			printf("Register content mismatch at 0x%02x: expected 0x%02x, got 0x%02x\n",
 					i, initial_reg[i], buf[i]);
-			res = 1;
+			ret = RESULT_FAIL;
 		}
 	}
 
-	return res;
+	return ret;
 }
 
-int test_read_individual(int fd)
+enum test_result test_read_individual(int fd)
 {
 	int res, i;
 	uint8_t write_buf[1] = { 0 };
@@ -83,11 +96,13 @@ int test_read_individual(int fd)
 		},
 	};
 	struct i2c_rdwr_ioctl_data arg = { msgs, 2 };
+	enum test_result ret = RESULT_PASS;
 
 	for (i = 0; i < I2C_N_REG; i++) {
 		write_buf[0] = i;
 		res = ioctl(fd, I2C_RDWR, &arg);
 		if (res != arg.nmsgs) {
+			ret = RESULT_FAIL;
 			if (res < 0) {
 				printf("Ioctl error, reg %d: %i '%s'\n", i, res,
 						strerror(errno));
@@ -96,22 +111,20 @@ int test_read_individual(int fd)
 				printf("Invalid number of messages (%i != %i)\n",
 						res, arg.nmsgs);
 			}
-		} else {
-			res = 0;
 		}
 
 		if (read_buf[0] != initial_reg[i]) {
 			printf("Register content mismatch at 0x%02x: expected 0x%02x, got 0x%02x\n",
 					i, initial_reg[i], read_buf[0]);
-			res = 1;
+			ret = RESULT_FAIL;
 			break;
 		}
 	}
 
-	return res;
+	return ret;
 }
 
-int test_write(int fd)
+enum test_result test_write(int fd)
 {
 	int res, i;
 	uint8_t buf[I2C_N_REG + 1] = { 0 };
@@ -121,6 +134,7 @@ int test_write(int fd)
 		.buf = buf
 	};
 	struct i2c_rdwr_ioctl_data arg = { &msg, 1 };
+	enum test_result ret = RESULT_PASS;
 
 	for (i = 0; i < I2C_N_REG; i++) {
 		buf[i + 1] = initial_reg[i];
@@ -128,18 +142,17 @@ int test_write(int fd)
 
 	res = ioctl(fd, I2C_RDWR, &arg);
 	if (res != arg.nmsgs) {
+		ret = RESULT_FAIL;
 		if (res < 0)
 			printf("Ioctl error: %i '%s'\n", res, strerror(errno));
 		else
 			printf("Invalid number of messages (%i != %i)\n", res, arg.nmsgs);
-	} else {
-		res = 0;
 	}
 
-	return res;
+	return ret;
 }
 
-int test_write_individual(int fd)
+enum test_result test_write_individual(int fd)
 {
 	int res, i;
 	uint8_t buf[2] = { 0 };
@@ -149,31 +162,35 @@ int test_write_individual(int fd)
 		.buf = buf
 	};
 	struct i2c_rdwr_ioctl_data arg = { &msg, 1 };
+	enum test_result ret = RESULT_PASS;
 
 	for (i = 0; i < I2C_N_REG; i++) {
 		buf[0] = i;
 		buf[1] = initial_reg[i];
 		res = ioctl(fd, I2C_RDWR, &arg);
 		if (res != arg.nmsgs) {
+			ret = RESULT_FAIL;
 			if (res < 0)
 				printf("Ioctl error (%i): %i '%s'\n", i, res, strerror(errno));
 			else
 				printf("Invalid number of messages (%i != %i)\n", res, arg.nmsgs);
-		} else {
-			res = 0;
 		}
 	}
 
-	return res;
+	return ret;
 }
 
 struct test {
 	char name[255];
-	int (*func)(int fd);
-	int result;
+	enum test_result (*func)(int fd);
+	enum test_result result;
 };
 
-#define TEST(__func) { .name = #__func, .func = __func }
+#define TEST(__func) { \
+        .name = #__func, \
+        .func = __func, \
+        .result = RESULT_SKIP \
+    }
 
 struct test tests[] = {
 	TEST(test_write),
@@ -203,13 +220,16 @@ int main(int argc, char *argv[])
 		struct test *t = &tests[i];
 		printf("Running %s...\n", t->name);
 		t->result = t->func(fd);
-		if (t->result)
+		if (t->result == RESULT_FAIL)
 			break;
 	}
 
+	printf(",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,\n"
+	       "Results:\n"
+	       "``````````````````````````````````````\n");
 	for (i = 0; i < ARRAY_SIZE(tests); i++) {
 		struct test *t = &tests[i];
-		printf("%30s: [%s]\n", t->name, t->result ? "FAIL" : "PASS");
+		printf("%30s: [%s]\n", t->name, result_str[t->result]);
 	}
 
 	return 0;
